@@ -11,6 +11,7 @@
 #include "glaze/exceptions/cbor_exceptions.hpp"
 #include "glaze/exceptions/csv_exceptions.hpp"
 #include "glaze/exceptions/json_exceptions.hpp"
+#include "glaze/exceptions/kdl_exceptions.hpp"
 #include "glaze/exceptions/msgpack_exceptions.hpp"
 
 namespace glz::ex
@@ -20,7 +21,7 @@ namespace glz::ex
    {
       auto ec = glz::read<Opts>(value, buffer);
       if (ec) {
-         if constexpr (Opts.format == JSON) {
+         if constexpr (Opts.format == JSON || Opts.format == KDL) {
             throw std::runtime_error("read error: " + glz::format_error(ec, buffer));
          }
          else {

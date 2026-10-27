@@ -1600,6 +1600,14 @@ namespace glz
       ret.format = YAML;
       return ret;
    }
+
+   template <auto Opts>
+   constexpr auto set_kdl()
+   {
+      auto ret = Opts;
+      ret.format = KDL;
+      return ret;
+   }
 }
 
 namespace glz
