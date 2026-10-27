@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <bit>
 #include <cstring>
 
@@ -1584,7 +1585,7 @@ namespace glz
    }
 
    template <size_t N>
-   using bucket_value_t = std::conditional_t < N<256, uint8_t, uint16_t>;
+   using bucket_value_t = std::conditional_t<(N < 256), uint8_t, std::conditional_t<(N < 65536), uint16_t, size_t>>;
 
    // The larger the underlying bucket the more we avoid collisions with invalid keys.
    // This improves performance of rejecting invalid keys because we don't have to do
@@ -1764,114 +1765,54 @@ namespace glz
 
    constexpr std::optional<size_t> find_unique_index(const auto& strings)
    {
-      namespace ranges = std::ranges;
-
+      // A byte cannot distinguish more than 256 keys. Check columns directly
+      // instead of allocating and sorting every column during constant evaluation.
       const auto N = strings.size();
-
-      if (N == 0) {
-         return {};
-      }
-
+      if (N == 0 || N > 256) return {};
       size_t min_length = (std::numeric_limits<size_t>::max)();
-      for (auto& s : strings) {
-         const auto n = s.size();
-         if (n < min_length) {
-            min_length = n;
+      for (const auto& key : strings) min_length = (std::min)(min_length, key.size());
+      for (size_t column = 0; column < min_length; ++column) {
+         std::array<bool, 256> seen{};
+         bool unique = true;
+         for (const auto& key : strings) {
+            const auto byte = uint8_t(key[column]);
+            if (seen[byte]) {
+               unique = false;
+               break;
+            }
+            seen[byte] = true;
          }
+         if (unique) return column;
       }
-
-      if (min_length == 0) {
-         return {};
-      }
-
-      std::vector<std::vector<uint8_t>> cols(min_length);
-
-      for (const auto& s : strings) {
-         // for each character in the string
-         for (size_t c = 0; c < min_length; ++c) {
-            cols[c].emplace_back(s[c]);
-         }
-      }
-
-      // sort columns so that we can determine
-      // if the column is unique
-      size_t best_index{};
-      size_t best_count{};
-      for (size_t i = 0; i < min_length; ++i) {
-         auto& col = cols[i];
-         ranges::sort(col);
-         if (auto it = ranges::adjacent_find(col); it == col.end()) {
-            // no duplicates found
-            best_count = col.size();
-            best_index = i;
-            break;
-         }
-      }
-
-      if (best_count == 0) {
-         return {};
-      }
-
-      return best_index;
+      return {};
    }
 
    constexpr std::optional<size_t> find_unique_sized_index(const auto& strings)
    {
-      namespace ranges = std::ranges;
-
       const auto N = strings.size();
-
-      if (N == 0) {
-         return {};
-      }
-
+      if (N == 0 || N > 65536) return {};
       size_t min_length = (std::numeric_limits<size_t>::max)();
-      for (auto& s : strings) {
-         if (s.contains('"')) {
-            return {}; // Sized hashing requires looking for terminating quote
+      for (const auto& key : strings) {
+         if (key.contains('"')) return {}; // Sized hashing searches for a terminating quote.
+         min_length = (std::min)(min_length, key.size());
+      }
+      for (size_t column = 0; column < min_length; ++column) {
+         // Match the existing 16-bit (byte, length) representation exactly.
+         std::array<uint64_t, 1024> seen{};
+         bool unique = true;
+         for (const auto& key : strings) {
+            const auto code = uint16_t(uint16_t(key[column]) | (uint16_t(key.size()) << 8));
+            const auto bit = uint64_t{1} << (code % 64);
+            auto& word = seen[code / 64];
+            if (word & bit) {
+               unique = false;
+               break;
+            }
+            word |= bit;
          }
-
-         const auto n = s.size();
-         if (n < min_length) {
-            min_length = n;
-         }
+         if (unique) return column;
       }
-
-      if (min_length == 0) {
-         return {};
-      }
-
-      std::vector<std::vector<uint16_t>> cols(min_length);
-
-      for (size_t i = 0; i < N; ++i) {
-         const auto& s = strings[i];
-         // for each character in the string
-         for (size_t c = 0; c < min_length; ++c) {
-            const auto k = uint16_t(uint16_t(s[c]) | (uint16_t(s.size()) << 8));
-            cols[c].emplace_back(k);
-         }
-      }
-
-      // sort columns so that we can determine
-      // if the column is unique
-      size_t best_index{};
-      size_t best_count{};
-      for (size_t i = 0; i < min_length; ++i) {
-         auto& col = cols[i];
-         ranges::sort(col);
-         if (auto it = ranges::adjacent_find(col); it == col.end()) {
-            // no duplicates found
-            best_count = col.size();
-            best_index = i;
-            break;
-         }
-      }
-
-      if (best_count == 0) {
-         return {};
-      }
-
-      return best_index;
+      return {};
    }
 
    // For full hashing we perform a rich_bitmix on the tail end
@@ -2389,9 +2330,9 @@ namespace glz
             info.min_length = k_info.min_length;
             info.max_length = k_info.max_length;
             info.front_hash_bytes = k_info.front_hash_bytes;
-            info.table.fill(uint8_t(N));
+            info.table.fill(bucket_value_t<N>(N));
 
-            for (uint8_t i = 0; i < N; ++i) {
+            for (size_t i = 0; i < N; ++i) {
                auto& key = keys[i];
                const auto h = [&]() -> size_t {
                   if (info.front_hash_bytes == sizeof(uint16_t)) {
@@ -2426,7 +2367,7 @@ namespace glz
 
             return info;
          }
-         else if constexpr (type == unique_index && N < 256) {
+         else if constexpr (type == unique_index && N <= 256) {
             hash_info_t<T, bucket_size(unique_index, N)> info{.type = unique_index, .seed = k_info.seed};
             info.min_length = k_info.min_length;
             info.max_length = k_info.max_length;
@@ -2436,14 +2377,14 @@ namespace glz
             if constexpr (k_info.sized_hash) {
                info.sized_hash = true;
                constexpr auto bsize = bucket_size(unique_index, N);
-               for (uint8_t i = 0; i < N; ++i) {
+               for (size_t i = 0; i < N; ++i) {
                   const auto x = uint16_t(keys[i][k_info.unique_index]) | (uint16_t(keys[i].size()) << 8);
                   const auto h = bitmix(x, info.seed) % bsize;
                   info.table[h] = i;
                }
             }
             else {
-               for (uint8_t i = 0; i < N; ++i) {
+               for (size_t i = 0; i < N; ++i) {
                   const auto h = uint8_t(keys[i][k_info.unique_index]);
                   info.table[h] = i;
                }
@@ -2456,11 +2397,11 @@ namespace glz
             hash_info_t<T, bucket_size(unique_per_length, N)> info{.type = unique_per_length, .seed = k_info.seed};
             info.min_length = k_info.min_length;
             info.max_length = k_info.max_length;
-            info.table.fill(uint8_t(N));
+            info.table.fill(bucket_value_t<N>(N));
             info.sized_hash = true;
             constexpr auto bsize = bucket_size(unique_per_length, N);
             constexpr auto& data = per_length_info<T>;
-            for (uint8_t i = 0; i < N; ++i) {
+            for (size_t i = 0; i < N; ++i) {
                const auto n = keys[i].size();
                const auto x = uint16_t(keys[i][data.unique_index[n]]) | (uint16_t(n) << 8);
                const auto h = bitmix(x, info.seed) % bsize;
@@ -2473,9 +2414,9 @@ namespace glz
             hash_info_t<T, bucket_size(full_flat, N)> info{.type = full_flat, .seed = k_info.seed};
             info.min_length = k_info.min_length;
             info.max_length = k_info.max_length;
-            info.table.fill(uint8_t(N));
+            info.table.fill(bucket_value_t<N>(N));
             constexpr auto bsize = bucket_size(full_flat, N);
-            for (uint8_t i = 0; i < N; ++i) {
+            for (size_t i = 0; i < N; ++i) {
                const auto h = full_hash_impl(keys[i], info.seed, info.min_length, info.max_length) % bsize;
                info.table[h] = i;
             }
