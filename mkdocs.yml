@@ -90,6 +90,7 @@ nav:
    - Stencil/Mustache: stencil-mustache.md
    - TOML: toml.md
    - YAML: yaml.md
+   - KDL 2.0: kdl.md
    - EETF: EETF/erlang-external-term-format.md
  - Serialization/Parsing:
    - Automatic Enum Strings: enum-reflection.md

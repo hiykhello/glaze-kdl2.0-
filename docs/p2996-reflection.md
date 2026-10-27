@@ -19,6 +19,8 @@ When `GLZ_REFLECTION26` is enabled, Glaze uses P2996 for:
 
 The entire Glaze API remains unchanged - JSON, BEVE, CSV, and all other formats work exactly as before.
 
+[KDL 2.0](kdl.md#c26-static-reflection) uses this backend for object members, including C-style arrays, and supports both the `reflect_enums` option and the per-enum `glz::reflect_enum` marker.
+
 ## Requirements
 
 P2996 reflection requires a compiler with C++26 reflection support:

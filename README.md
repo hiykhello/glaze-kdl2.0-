@@ -13,6 +13,7 @@ Formats Supported:
 - [Stencil/Mustache](https://stephenberry.github.io/glaze/stencil-mustache/) (string interpolation) | `glaze/stencil/stencil.hpp`
 - [TOML 1.1](https://stephenberry.github.io/glaze/toml/) (Tom's Obvious, Minimal Language) | `glaze/toml.hpp`
 - [YAML](https://stephenberry.github.io/glaze/yaml/) | `glaze/yaml.hpp`
+- [KDL 2.0](https://stephenberry.github.io/glaze/kdl/) | `glaze/kdl.hpp`
 - [EETF](https://stephenberry.github.io/glaze/EETF/erlang-external-term-format/) (Erlang External Term Format) | `glaze/eetf.hpp`
 - [And Many More Features](https://stephenberry.github.io/glaze/)
 
