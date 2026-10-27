@@ -33,7 +33,7 @@ permissions:
 
 env:
   # Suites that exercise UTF-8 validation. Kept narrow so the emulated job stays quick.
-  UTF8_TESTS: "^(utf8_validation_test|json_conformance|json_test)$"
+  UTF8_TESTS: "^(utf8_validation_test|json_conformance|json_test|kdl_scan_test)$"
 
 concurrency:
   # Supersede an in-flight run when a branch is pushed again, so a fixup commit
@@ -89,7 +89,7 @@ jobs:
             -Dglaze_ENABLE_FUZZING=OFF
 
       - name: Build
-        run: cmake --build build -j"$(nproc)" --target utf8_validation_test json_conformance json_test
+        run: cmake --build build -j"$(nproc)" --target utf8_validation_test json_conformance json_test kdl_scan_test
 
       - name: Test
         # --no-tests=error: ctest exits 0 when -R matches nothing, so without it a renamed test
@@ -121,7 +121,7 @@ jobs:
             -Dglaze_ENABLE_FUZZING=OFF
 
       - name: Build
-        run: cmake --build build -j"$(nproc)" --target utf8_validation_test json_conformance json_test
+        run: cmake --build build -j"$(nproc)" --target utf8_validation_test json_conformance json_test kdl_scan_test
 
       - name: Test
         run: ctest --test-dir build --output-on-failure --no-tests=error -R "$UTF8_TESTS"
@@ -178,7 +178,7 @@ jobs:
             -Dglaze_ENABLE_FUZZING=OFF
 
       - name: Build
-        run: cmake --build build -j"$(nproc)" --target utf8_validation_test json_conformance json_test
+        run: cmake --build build -j"$(nproc)" --target utf8_validation_test json_conformance json_test kdl_scan_test
 
       - name: Test (native)
         if: steps.mode.outputs.emulator == ''
@@ -192,7 +192,8 @@ jobs:
           set -euo pipefail
           for t in build/tests/json_test/utf8_validation_test \
                    build/tests/json_conformance/json_conformance \
-                   build/tests/json_test/json_test; do
+                   build/tests/json_test/json_test \
+                   build/tests/kdl_test/kdl_scan_test; do
             echo "::group::$t"
             "$SDE" -future -- "$t"
             echo "::endgroup::"
@@ -232,6 +233,10 @@ jobs:
               tests/json_test/utf8_validation_test.cpp \
               -o /tmp/utf8_wasm.js -sALLOW_MEMORY_GROWTH=1 -sEXIT_RUNTIME=1 -sTOTAL_STACK=8MB
             node /tmp/utf8_wasm.js
+            em++ -std=c++23 -O2 $flags -I include -I tests \
+              tests/kdl_test/kdl_scan_test.cpp \
+              -o /tmp/kdl_scan_wasm.js -sALLOW_MEMORY_GROWTH=1 -sEXIT_RUNTIME=1 -sTOTAL_STACK=8MB
+            node /tmp/kdl_scan_wasm.js
             echo "::endgroup::"
           done
 
