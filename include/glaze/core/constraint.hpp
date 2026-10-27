@@ -38,11 +38,11 @@ namespace glz
       typename T::constraint_t;
    };
 
-   template <uint32_t Format, is_read_constraint T>
-   struct from<Format, T>
+   namespace detail
    {
-      template <auto Opts>
-      static void op(auto&& value, is_context auto&& ctx, auto&& it, auto end)
+      // Shared constraint dispatch; each format supplies its native value reader.
+      template <auto Opts, class T, class Ctx, class Read>
+      void dispatch_read_constraint(T&& value, Ctx& ctx, Read&& read)
       {
          using V = std::decay_t<decltype(value)>;
          using Constraint = typename V::constraint_t;
@@ -69,7 +69,7 @@ namespace glz
                   using Tuple = typename inputs_as_tuple<Constraint>::type;
                   if constexpr (glz::tuple_size_v<Tuple> == 1) {
                      std::decay_t<glz::tuple_element_t<0, Tuple>> input{};
-                     parse<Format>::template op<Opts>(input, ctx, it, end);
+                     read(input);
                      if (parse_failed(ctx.error)) [[unlikely]]
                         return;
                      if constexpr (!check_skip_read_constraint(Opts)) {
@@ -100,7 +100,7 @@ namespace glz
                      using Tuple = typename function_traits<Func>::arguments;
                      if constexpr (glz::tuple_size_v<Tuple> == 1) {
                         std::decay_t<glz::tuple_element_t<0, Tuple>> input{};
-                        parse<Format>::template op<Opts>(input, ctx, it, end);
+                        read(input);
                         if (parse_failed(ctx.error)) [[unlikely]]
                            return;
                         if constexpr (!check_skip_read_constraint(Opts)) {
@@ -142,7 +142,7 @@ namespace glz
                   }
                   else if constexpr (N == 2) {
                      std::decay_t<glz::tuple_element_t<1, Tuple>> input{};
-                     parse<Format>::template op<Opts>(input, ctx, it, end);
+                     read(input);
                      if (parse_failed(ctx.error)) [[unlikely]]
                         return;
                      if constexpr (!check_skip_read_constraint(Opts)) {
@@ -172,6 +172,17 @@ namespace glz
                   "`glz::meta` outside your class so that your lambda can operate on a defined class.");
             }
          }
+      }
+   }
+
+   template <uint32_t Format, is_read_constraint T>
+   struct from<Format, T>
+   {
+      template <auto Opts>
+      static void op(auto&& value, is_context auto&& ctx, auto&& it, auto end)
+      {
+         detail::dispatch_read_constraint<Opts>(
+            value, ctx, [&](auto& input) { parse<Format>::template op<Opts>(input, ctx, it, end); });
       }
    };
 
@@ -208,8 +219,9 @@ namespace glz
    template <auto Target, auto Constraint, string_literal Message>
    constexpr auto read_constraint_impl() noexcept
    {
-      return
-         [](auto&& v) { return read_constraint_t<std::remove_cvref_t<decltype(v)>, Target, Constraint, Message>{v}; };
+      return [](auto&& v) {
+         return read_constraint_t<std::remove_reference_t<decltype(v)>, Target, Constraint, Message>{v};
+      };
    }
 
    template <auto Target, auto Constraint, string_literal Message>

@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "glaze/core/common.hpp" // glaze_value_t, get_member, context
+#include "glaze/core/constraint.hpp"
 #include "glaze/core/meta.hpp" // remove_meta_wrapper_t, meta_wrapper_v, custom_write
 #include "glaze/util/type_traits.hpp" // is_specialization_v, return_type, function_traits
 
@@ -32,7 +33,8 @@ namespace glz
    // a true mimic only wraps a single inner value; custom_t is the glz::custom getter/setter.
    template <class V>
    concept transparent_write_wrapper =
-      (glaze_value_t<V> && !custom_write<V>) || is_specialization_v<std::remove_cvref_t<V>, custom_t>;
+      (glaze_value_t<V> && !custom_write<V>) || is_specialization_v<std::remove_cvref_t<V>, custom_t> ||
+      is_read_constraint<std::remove_cvref_t<V>>;
 
    // Decayed return type of a custom_t getter (the `To` member), invoked on its parent.
    // Mirrors the getter dispatch in to<Format, custom_t> and custom_getter_returns_nullable.
@@ -102,6 +104,12 @@ namespace glz
       using type = typename resolve_write_type<typename custom_getter_result<custom_t<T, From, To>>::type>::type;
    };
 
+   template <is_read_constraint V>
+   struct resolve_write_type<V>
+   {
+      using type = typename resolve_write_type<typename V::value_type>::type;
+   };
+
    template <class V>
    using resolve_write_type_t = typename resolve_write_type<std::remove_cvref_t<V>>::type;
 
@@ -112,7 +120,10 @@ namespace glz
    GLZ_ALWAYS_INLINE void unwrap_write_value(V&& v, Ctx&& ctx, Func&& func)
    {
       using T = std::remove_cvref_t<V>;
-      if constexpr (glaze_value_t<T> && !custom_write<T>) {
+      if constexpr (is_read_constraint<T>) {
+         unwrap_write_value(std::invoke(T::target, v.val), ctx, std::forward<Func>(func));
+      }
+      else if constexpr (glaze_value_t<T> && !custom_write<T>) {
          unwrap_write_value(get_member(std::forward<V>(v), meta_wrapper_v<T>), ctx, std::forward<Func>(func));
       }
       else if constexpr (is_specialization_v<T, custom_t>) {
